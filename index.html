@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>لعبة حردتيها</title>
+<style>
+  * { box-sizing: border-box; user-select: none; }
+  body { margin: 0; overflow: hidden; background: linear-gradient(to bottom, #87CEEB, #90EE90); font-family: 'Arial', sans-serif; height: 100vh; }
+  #game { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+  
+  #standingContainer {
+    position: absolute;
+    right: 10%;
+    bottom: 10%;
+    height: 60%;
+  }
+  #standing {
+    height: 100%;
+    width: auto;
+    display: block;
+    filter: drop-shadow(5px 5px 10px rgba(0,0,0,0.3));
+  }
+  #target {
+    position: absolute;
+    /* بدل هاد القيم باش الدائرة الحمرا تجي فالمؤخرة */
+    right: 15%;
+    bottom: 25%;
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: rgba(255,0,0,0.5); /* خليها شفافة من بعد */
+    pointer-events: none;
+    border: 2px dashed red;
+  }
+  
+  #shooter {
+    position: absolute;
+    left: 10%;
+    bottom: 20%;
+    font-size: 80px;
+    transform: scaleX(-1);
+  }
+  
+  #arrow {
+    position: absolute;
+    left: -100px;
+    font-size: 50px;
+    display: none;
+    z-index: 10;
+  }
+  
+  #score {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    font-size: 32px;
+    font-weight: bold;
+    color: white;
+    text-shadow: 2px 2px 4px #000;
+    background: rgba(0,0,0,0.5);
+    padding: 10px 20px;
+    border-radius: 15px;
+  }
+  
+  #message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 50px;
+    font-weight: bold;
+    color: yellow;
+    text-shadow: 3px 3px 6px #000;
+    display: none;
+    text-align: center;
+    white-space: nowrap;
+    z-index: 20;
+  }
+  
+  #shootBtn {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 18px 40px;
+    font-size: 28px;
+    font-weight: bold;
+    background: #ff5722;
+    color: white;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    cursor: pointer;
+    z-index: 30;
+  }
+  #shootBtn:active { transform: translateX(-50%) scale(0.95); }
+  #shootBtn:disabled { background: #999; cursor: not-allowed; }
+  
+  #restartBtn {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 18px 40px;
+    font-size: 28px;
+    font-weight: bold;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    cursor: pointer;
+    z-index: 30;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="score">النقط: 0</div>
+  <div id="shooter">🏹</div>
+  
+  <div id="standingContainer">
+    <img id="standing" src="standing.jpg" alt="standing">
+    <div id="target"></div>
+  </div>
+  
+  <div id="arrow">➡️</div>
+  <div id="message"></div>
+  <button id="shootBtn">أطلق السهم</button>
+  <button id="restartBtn">العب مرة أخرى</button>
+</div>
+<script>
+  const scoreEl = document.getElementById('score');
+  const arrow = document.getElementById('arrow');
+  const target = document.getElementById('target');
+  const standing = document.getElementById('standing');
+  const message = document.getElementById('message');
+  const shootBtn = document.getElementById('shootBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const game = document.getElementById('game');
+  
+  let score = 0;
+  let isShooting = false;
+  let arrowX = -100;
+  let arrowSpeed = 8;
+  let animationId = null;
+  const WIN_SCORE = 10;
+  
+  function speak(text) {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'ar-SA';
+      utterance.rate = 1.2;
+      utterance.pitch = 1.2;
+      window.speechSynthesis.speak(utterance);
+    }
+  }
+  
+  function showMessage(text, color = 'yellow') {
+    message.textContent = text;
+    message.style.color = color;
+    message.style.display = 'block';
+    if (score < WIN_SCORE) {
+      setTimeout(() => {
+        message.style.display = 'none';
+      }, 1500);
+    }
+  }
+  
+  function resetArrow() {
+    arrow.style.display = 'none';
+    arrowX = -100;
+    arrow.style.left = arrowX + 'px';
+    isShooting = false;
+    shootBtn.disabled = false;
+  }
+  
+  function shoot() {
+    if (isShooting || score >= WIN_SCORE) return;
+    isShooting = true;
+    shootBtn.disabled = true;
+    arrow.style.display = 'block';
+    arrowX = -100;
+    arrow.style.left = arrowX + 'px';
+    
+    const targetRect = target.getBoundingClientRect();
+    const gameRect = game.getBoundingClientRect();
+    const targetCenterY = targetRect.top + targetRect.height / 2 - gameRect.top;
+    const arrowHeight = arrow.offsetHeight || 50;
+    arrow.style.bottom = (gameRect.height - targetCenterY - arrowHeight / 2) + 'px';
+    
+    animateArrow();
+  }
+  
+  function animateArrow() {
+    if (!isShooting) return;
+    
+    arrowX += arrowSpeed;
+    arrow.style.left = arrowX + 'px';
+    
+    const arrowRect = arrow.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    
+    if (arrowRect.right >= targetRect.left && 
+        arrowRect.left <= targetRect.right && 
+        arrowRect.bottom >= targetRect.top && 
+        arrowRect.top <= targetRect.bottom) {
+      score++;
+      scoreEl.textContent = 'النقط: ' + score;
+      speak('ايييي حردتيها');
+      showMessage('ايييي حردتيها!', 'lime');
+      resetArrow();
+      
+      if (score >= WIN_SCORE) {
+        speak('مبروك راك حردتيهالو');
+        message.textContent = 'مبروك راك حردتيهالو!';
+        message.style.color = 'gold';
+        message.style.display = 'block';
+        shootBtn.style.display = 'none';
+        restartBtn.style.display = 'block';
+      }
+      return;
+    }
+    
+    if (arrowX > game.offsetWidth) {
+      speak('هااء حشيتهالك');
+      showMessage('هااء حشيتهالك!', 'red');
+      resetArrow();
+      return;
+    }
+    
+    animationId = requestAnimationFrame(animateArrow);
+  }
+  
+  function restart() {
+    score = 0;
+    scoreEl.textContent = 'النقط: 0';
+    isShooting = false;
+    arrowX = -100;
+    arrow.style.left = arrowX + 'px';
+    arrow.style.display = 'none';
+    message.style.display = 'none';
+    shootBtn.style.display = 'block';
+    shootBtn.disabled = false;
+    restartBtn.style.display = 'none';
+    window.speechSynthesis.cancel();
+  }
+  
+  shootBtn.addEventListener('click', shoot);
+  restartBtn.addEventListener('click', restart);
+  document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+</script>
+</body>
+</html>
